@@ -1,11 +1,11 @@
 // Copyright 2021 Quentin K
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 // http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,7 +16,6 @@ const hc256 = @import("hc256");
 const Hc256 = hc256.Hc256;
 const std = @import("std");
 const testing = std.testing;
-
 
 test "Vector 1" {
     const key = [32]u8{
@@ -44,7 +43,7 @@ test "Vector 1" {
         0x4e, 0x74, 0x24, 0x8b, 0x72, 0x0b, 0x48, 0x18,
     };
 
-    var cipher = Hc256.init(key, iv);
+    var cipher = Hc256.init(key, iv, true);
 
     cipher.applyStream(data[0..]);
 
@@ -54,7 +53,7 @@ test "Vector 1" {
 }
 
 test "Vector 2" {
-        const key = [32]u8{
+    const key = [32]u8{
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -79,21 +78,22 @@ test "Vector 2" {
         0xdd, 0x50, 0x1f, 0xc6, 0x0b, 0x08, 0x2a, 0x50,
     };
 
-    var cipher = Hc256.init(key, iv);
+    var cipher = Hc256.init(key, iv, true);
 
-    cipher.applyStream(data[0..]);
+    cipher.applyStream(data[0..13]);
+    cipher.applyStream(data[13..]);
 
     var i: usize = 0;
 
-    while (i < 32) : (i += 1) try testing.expectEqual(expected[i], data[i]);
+    while (i < 14) : (i += 1) try testing.expectEqual(expected[i], data[i]);
 }
 
 test "Vector 3" {
-        const key = [32]u8{
+    const key = [32]u8{
         0x55, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
+        0,    0, 0, 0, 0, 0, 0, 0,
+        0,    0, 0, 0, 0, 0, 0, 0,
+        0,    0, 0, 0, 0, 0, 0, 0,
     };
     const iv = [32]u8{
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -114,7 +114,7 @@ test "Vector 3" {
         0xae, 0xb3, 0x90, 0x2f, 0x42, 0x0e, 0xd3, 0xa8,
     };
 
-    var cipher = Hc256.init(key, iv);
+    var cipher = Hc256.init(key, iv, false);
 
     cipher.applyStream(data[0..]);
 
