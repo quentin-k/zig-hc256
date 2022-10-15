@@ -45,11 +45,9 @@ test "Vector 1" {
 
     var cipher = Hc256.init(key, iv);
 
-    cipher.applyStream(data[0..]);
+    cipher.applyStream(&data);
 
-    var i: usize = 0;
-
-    while (i < 32) : (i += 1) try testing.expectEqual(expected[i], data[i]);
+    try std.testing.expectEqualSlices(u8, &expected, &data);
 }
 
 test "Vector 2" {
@@ -83,9 +81,7 @@ test "Vector 2" {
     cipher.applyStream(data[0..13]);
     cipher.applyStream(data[13..]);
 
-    var i: usize = 0;
-
-    while (i < 14) : (i += 1) try testing.expectEqual(expected[i], data[i]);
+    try std.testing.expectEqualSlices(u8, &expected, &data);
 }
 
 test "Vector 3" {
@@ -116,9 +112,7 @@ test "Vector 3" {
 
     var cipher = Hc256.init(key, iv);
 
-    cipher.applyStream(data[0..]);
+    cipher.applyStream(&data);
 
-    var i: usize = 0;
-
-    while (i < 32) : (i += 1) try testing.expectEqual(expected[i], data[i]);
+    try std.testing.expectEqualSlices(u8, &expected, &data);
 }

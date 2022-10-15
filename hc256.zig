@@ -43,13 +43,25 @@ pub const Hc256 = struct {
         }
 
         i = 16;
-        while (i < 2560) : (i += 1) w[i] = f2(w[i - 2]) +% w[i - 7] +% f1(w[i - 15]) +% w[i - 16] +% i;
+        while (i < 2560) : (i += 1) w[i] = @call(
+            .{ .modifier = .always_inline },
+            f2,
+            .{w[i - 2]},
+        ) +% w[i - 7] +% @call(
+            .{ .modifier = .always_inline },
+            f1,
+            .{w[i - 15]},
+        ) +% w[i - 16] +% i;
 
         std.mem.copy(u32, &cipher.ptable, w[512..(512 + 1024)]);
         std.mem.copy(u32, &cipher.qtable, w[1536..(1536 + 1024)]);
 
         i = 0;
-        while (i < 4096) : (i += 16) _ = cipher.genWord16();
+        while (i < 4096) : (i += 16) _ = @call(
+            .{ .modifier = .always_inline },
+            genWord16,
+            .{&cipher},
+        );
 
         return cipher;
     }
@@ -58,7 +70,14 @@ pub const Hc256 = struct {
     pub fn applyStream(self: *Hc256, data: []u8) void {
         for (data) |_, i| {
             defer self.ptr = (self.ptr + 1) % buffer_size;
-            if (self.ptr == 0) self.buffer = @bitCast([buffer_size]u8, self.genWord16());
+            if (self.ptr == 0) self.buffer = @bitCast(
+                [buffer_size]u8,
+                @call(
+                    .{ .modifier = .always_inline },
+                    genWord16,
+                    .{self},
+                ),
+            );
             data[i] ^= self.buffer[self.ptr];
         }
     }
@@ -140,7 +159,16 @@ pub const Hc256 = struct {
     }
 
     pub fn random(self: *Hc256) std.rand.Random {
-        return std.rand.Random.init(self, applyStream);
+        return std.rand.Random.init(self, getRandom);
+    }
+
+    fn getRandom(self: *Hc256, data: []u8) void {
+        std.mem.set(u8, data, 0);
+        @call(
+            .{ .modifier = .always_inline },
+            applyStream,
+            .{&self},
+        );
     }
 
     fn h1(self: *Hc256, x: u32) u32 {
@@ -152,18 +180,18 @@ pub const Hc256 = struct {
     }
 
     fn g1(self: *Hc256, x: u32, y: u32) u32 {
-        return (((x >> 10) | (x << (32 - 10))) ^ ((y >> 23) | (y << (32 - 23)))) +% self.qtable[(x ^ y) & 1023];
+        return (std.math.rotr(u32, x, 10) ^ std.math.rotr(u32, y, 23)) +% self.qtable[(x ^ y) & 1023];
     }
 
     fn g2(self: *Hc256, x: u32, y: u32) u32 {
-        return (((x >> 10) | (x << (32 - 10))) ^ ((y >> 23) | (y << (32 - 23)))) +% self.ptable[(x ^ y) & 1023];
+        return (std.math.rotr(u32, x, 10) ^ std.math.rotr(u32, y, 23)) +% self.ptable[(x ^ y) & 1023];
     }
 };
 
 fn f1(x: u32) u32 {
-    return ((x >> 7) | (x << (32 - 7))) ^ ((x >> 18) | (x << (32 - 18))) ^ (x >> 3);
+    return std.math.rotr(u32, x, 7) ^ std.math.rotr(u32, x, 18) ^ (x >> 3);
 }
 
 fn f2(x: u32) u32 {
-    return ((x >> 17) | (x << (32 - 17))) ^ ((x >> 19) | (x << (32 - 19))) ^ (x >> 10);
+    return std.math.rotr(u32, x, 17) ^ std.math.rotr(u32, x, 19) ^ (x >> 10);
 }
