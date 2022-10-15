@@ -16,16 +16,20 @@ const std = @import("std");
 
 const Table = [1024]u32;
 
-const BufferSize = 4;
+const buffer_size = 16 * 4;
 
 pub const Hc256 = struct {
     ptable: Table,
     qtable: Table,
-    buffer: [BufferSize]u8 = [_]u8{0} ** BufferSize,
+    buffer: [buffer_size]u8 = [_]u8{0} ** buffer_size,
     ctr: usize = 0,
+    ptr: usize = 0,
 
     /// Initialize the cipher with the key and iv
-    pub fn init(key: [32]u8, iv: [32]u8,) Hc256 {
+    pub fn init(
+        key: [32]u8,
+        iv: [32]u8,
+    ) Hc256 {
         var cipher = Hc256{
             .ptable = undefined,
             .qtable = undefined,
@@ -45,90 +49,93 @@ pub const Hc256 = struct {
         std.mem.copy(u32, &cipher.qtable, w[1536..(1536 + 1024)]);
 
         i = 0;
-        while (i < 4096) : (i += 1) _ = cipher.genWord();
-
-        cipher.buffer = [4]u8{ 0, 0, 0, 0 };
+        while (i < 4096) : (i += 16) _ = cipher.genWord16();
 
         return cipher;
     }
 
     /// Applies the keystream from the cipher to the given bytes in place
     pub fn applyStream(self: *Hc256, data: []u8) void {
-        const buf_size = @as(usize, self.buffer[0]);
-
-        // Handle initial buffering
-        const dlen = if (self.buffered) blk: {
-            var i: usize = 0;
-            const buf_start = 4 - buf_size;
-
-            if (data.len <= buf_size) {
-                while (i < data.len) : (i += 1) {
-                    data[i] ^= self.buffer[buf_start + i];
-                    self.buffer[buf_start + i] = 0;
-                }
-
-                self.buffer[0] = @intCast(u8, (data.len - buf_size));
-                return;
-            } else {
-                while (i < buf_size) : (i += 1) {
-                    data[i] ^= self.buffer[buf_start + i];
-                    self.buffer[buf_start + i] = 0;
-                }
-
-                self.buffer[0] = 0;
-            }
-
-            break :blk data.len - buf_size;
-        } else data.len;
-
-        var i: usize = 0;
-
-        while (i < (dlen / 4)) : (i += 1) {
-            var word = @bitCast([4]u8, self.genWord());
-
-            data[(i * 4) + buf_size] ^= word[0];
-            data[((i * 4) + buf_size) + 1] ^= word[1];
-            data[((i * 4) + buf_size) + 2] ^= word[2];
-            data[((i * 4) + buf_size) + 3] ^= word[3];
-        }
-
-        switch (dlen % 4) {
-            1 => {
-                var word = @bitCast([4]u8, self.genWord());
-
-                data[(i * 4) + buf_size] ^= word[0];
-                self.buffer = [4]u8{ 3, word[1], word[2], word[3] };
-            },
-            2 => {
-                var word = @bitCast([4]u8, self.genWord());
-
-                data[(i * 4) + buf_size] ^= word[0];
-                data[((i * 4) + buf_size) + 1] ^= word[1];
-
-                self.buffer = [4]u8{ 2, 0, word[2], word[3] };
-            },
-            3 => {
-                var word = @bitCast([4]u8, self.genWord());
-
-                data[(i * 4) + buf_size] ^= word[0];
-                data[((i * 4) + buf_size) + 1] ^= word[1];
-                data[((i * 4) + buf_size) + 2] ^= word[2];
-
-                self.buffer = [4]u8{ 1, 0, 0, word[3] };
-            },
-            else => {}, // This will always be zeroes if buffered
+        for (data) |_, i| {
+            defer self.ptr = (self.ptr + 1) % buffer_size;
+            if (self.ptr == 0) self.buffer = @bitCast([buffer_size]u8, self.genWord16());
+            data[i] ^= self.buffer[self.ptr];
         }
     }
 
     /// Generates the next word from the cipher
-    pub fn genWord(self: *Hc256) u32 {
-        defer self.ctr = (self.ctr + 1) & 2047;
+    pub fn genWord16(self: *Hc256) [16]u32 {
+        defer self.ctr = (self.ctr + 16) & 2047;
         if (self.ctr < 1024) {
-            self.ptable[self.ctr & 1023] = self.ptable[self.ctr & 1023] +% self.ptable[(self.ctr -% 10) & 1023] +% self.g1(self.ptable[(self.ctr -% 3) & 1023], self.ptable[(self.ctr -% 1023) & 1023]);
-            return self.h1(self.ptable[(self.ctr -% 12) & 1023]) ^ self.ptable[self.ctr & 1023];
+            self.ptable[(self.ctr + 0) & 1023] = self.ptable[(self.ctr + 0) & 1023] +% self.ptable[((self.ctr + 0) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 0) -% 3) & 1023], self.ptable[((self.ctr + 0) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 1) & 1023] = self.ptable[(self.ctr + 1) & 1023] +% self.ptable[((self.ctr + 1) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 1) -% 3) & 1023], self.ptable[((self.ctr + 1) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 2) & 1023] = self.ptable[(self.ctr + 2) & 1023] +% self.ptable[((self.ctr + 2) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 2) -% 3) & 1023], self.ptable[((self.ctr + 2) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 3) & 1023] = self.ptable[(self.ctr + 3) & 1023] +% self.ptable[((self.ctr + 3) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 3) -% 3) & 1023], self.ptable[((self.ctr + 3) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 4) & 1023] = self.ptable[(self.ctr + 4) & 1023] +% self.ptable[((self.ctr + 4) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 4) -% 3) & 1023], self.ptable[((self.ctr + 4) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 5) & 1023] = self.ptable[(self.ctr + 5) & 1023] +% self.ptable[((self.ctr + 5) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 5) -% 3) & 1023], self.ptable[((self.ctr + 5) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 6) & 1023] = self.ptable[(self.ctr + 6) & 1023] +% self.ptable[((self.ctr + 6) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 6) -% 3) & 1023], self.ptable[((self.ctr + 6) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 7) & 1023] = self.ptable[(self.ctr + 7) & 1023] +% self.ptable[((self.ctr + 7) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 7) -% 3) & 1023], self.ptable[((self.ctr + 7) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 8) & 1023] = self.ptable[(self.ctr + 8) & 1023] +% self.ptable[((self.ctr + 8) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 8) -% 3) & 1023], self.ptable[((self.ctr + 8) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 9) & 1023] = self.ptable[(self.ctr + 9) & 1023] +% self.ptable[((self.ctr + 9) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 9) -% 3) & 1023], self.ptable[((self.ctr + 9) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 10) & 1023] = self.ptable[(self.ctr + 10) & 1023] +% self.ptable[((self.ctr + 10) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 10) -% 3) & 1023], self.ptable[((self.ctr + 10) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 11) & 1023] = self.ptable[(self.ctr + 11) & 1023] +% self.ptable[((self.ctr + 11) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 11) -% 3) & 1023], self.ptable[((self.ctr + 11) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 12) & 1023] = self.ptable[(self.ctr + 12) & 1023] +% self.ptable[((self.ctr + 12) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 12) -% 3) & 1023], self.ptable[((self.ctr + 12) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 13) & 1023] = self.ptable[(self.ctr + 13) & 1023] +% self.ptable[((self.ctr + 13) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 13) -% 3) & 1023], self.ptable[((self.ctr + 13) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 14) & 1023] = self.ptable[(self.ctr + 14) & 1023] +% self.ptable[((self.ctr + 14) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 14) -% 3) & 1023], self.ptable[((self.ctr + 14) -% 1023) & 1023]);
+            self.ptable[(self.ctr + 15) & 1023] = self.ptable[(self.ctr + 15) & 1023] +% self.ptable[((self.ctr + 15) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + 15) -% 3) & 1023], self.ptable[((self.ctr + 15) -% 1023) & 1023]);
+            return [16]u32{
+                self.h1(self.ptable[((self.ctr + 0) -% 12) & 1023]) ^ self.ptable[(self.ctr + 0) & 1023],
+                self.h1(self.ptable[((self.ctr + 1) -% 12) & 1023]) ^ self.ptable[(self.ctr + 1) & 1023],
+                self.h1(self.ptable[((self.ctr + 2) -% 12) & 1023]) ^ self.ptable[(self.ctr + 2) & 1023],
+                self.h1(self.ptable[((self.ctr + 3) -% 12) & 1023]) ^ self.ptable[(self.ctr + 3) & 1023],
+                self.h1(self.ptable[((self.ctr + 4) -% 12) & 1023]) ^ self.ptable[(self.ctr + 4) & 1023],
+                self.h1(self.ptable[((self.ctr + 5) -% 12) & 1023]) ^ self.ptable[(self.ctr + 5) & 1023],
+                self.h1(self.ptable[((self.ctr + 6) -% 12) & 1023]) ^ self.ptable[(self.ctr + 6) & 1023],
+                self.h1(self.ptable[((self.ctr + 7) -% 12) & 1023]) ^ self.ptable[(self.ctr + 7) & 1023],
+                self.h1(self.ptable[((self.ctr + 8) -% 12) & 1023]) ^ self.ptable[(self.ctr + 8) & 1023],
+                self.h1(self.ptable[((self.ctr + 9) -% 12) & 1023]) ^ self.ptable[(self.ctr + 9) & 1023],
+                self.h1(self.ptable[((self.ctr + 10) -% 12) & 1023]) ^ self.ptable[(self.ctr + 10) & 1023],
+                self.h1(self.ptable[((self.ctr + 11) -% 12) & 1023]) ^ self.ptable[(self.ctr + 11) & 1023],
+                self.h1(self.ptable[((self.ctr + 12) -% 12) & 1023]) ^ self.ptable[(self.ctr + 12) & 1023],
+                self.h1(self.ptable[((self.ctr + 13) -% 12) & 1023]) ^ self.ptable[(self.ctr + 13) & 1023],
+                self.h1(self.ptable[((self.ctr + 14) -% 12) & 1023]) ^ self.ptable[(self.ctr + 14) & 1023],
+                self.h1(self.ptable[((self.ctr + 15) -% 12) & 1023]) ^ self.ptable[(self.ctr + 15) & 1023],
+            };
         } else {
-            self.qtable[self.ctr & 1023] = self.qtable[self.ctr & 1023] +% self.qtable[(self.ctr -% 10) & 1023] +% self.g2(self.qtable[(self.ctr -% 3) & 1023], self.qtable[(self.ctr -% 1023) & 1023]);
-            return self.h1(self.qtable[(self.ctr -% 12) & 1023]) ^ self.qtable[self.ctr & 1023];
+            self.qtable[(self.ctr + 0) & 1023] = self.qtable[(self.ctr + 0) & 1023] +% self.qtable[((self.ctr + 0) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 0) -% 3) & 1023], self.qtable[((self.ctr + 0) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 1) & 1023] = self.qtable[(self.ctr + 1) & 1023] +% self.qtable[((self.ctr + 1) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 1) -% 3) & 1023], self.qtable[((self.ctr + 1) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 2) & 1023] = self.qtable[(self.ctr + 2) & 1023] +% self.qtable[((self.ctr + 2) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 2) -% 3) & 1023], self.qtable[((self.ctr + 2) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 3) & 1023] = self.qtable[(self.ctr + 3) & 1023] +% self.qtable[((self.ctr + 3) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 3) -% 3) & 1023], self.qtable[((self.ctr + 3) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 4) & 1023] = self.qtable[(self.ctr + 4) & 1023] +% self.qtable[((self.ctr + 4) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 4) -% 3) & 1023], self.qtable[((self.ctr + 4) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 5) & 1023] = self.qtable[(self.ctr + 5) & 1023] +% self.qtable[((self.ctr + 5) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 5) -% 3) & 1023], self.qtable[((self.ctr + 5) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 6) & 1023] = self.qtable[(self.ctr + 6) & 1023] +% self.qtable[((self.ctr + 6) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 6) -% 3) & 1023], self.qtable[((self.ctr + 6) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 7) & 1023] = self.qtable[(self.ctr + 7) & 1023] +% self.qtable[((self.ctr + 7) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 7) -% 3) & 1023], self.qtable[((self.ctr + 7) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 8) & 1023] = self.qtable[(self.ctr + 8) & 1023] +% self.qtable[((self.ctr + 8) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 8) -% 3) & 1023], self.qtable[((self.ctr + 8) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 9) & 1023] = self.qtable[(self.ctr + 9) & 1023] +% self.qtable[((self.ctr + 9) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 9) -% 3) & 1023], self.qtable[((self.ctr + 9) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 10) & 1023] = self.qtable[(self.ctr + 10) & 1023] +% self.qtable[((self.ctr + 10) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 10) -% 3) & 1023], self.qtable[((self.ctr + 10) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 11) & 1023] = self.qtable[(self.ctr + 11) & 1023] +% self.qtable[((self.ctr + 11) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 11) -% 3) & 1023], self.qtable[((self.ctr + 11) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 12) & 1023] = self.qtable[(self.ctr + 12) & 1023] +% self.qtable[((self.ctr + 12) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 12) -% 3) & 1023], self.qtable[((self.ctr + 12) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 13) & 1023] = self.qtable[(self.ctr + 13) & 1023] +% self.qtable[((self.ctr + 13) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 13) -% 3) & 1023], self.qtable[((self.ctr + 13) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 14) & 1023] = self.qtable[(self.ctr + 14) & 1023] +% self.qtable[((self.ctr + 14) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 14) -% 3) & 1023], self.qtable[((self.ctr + 14) -% 1023) & 1023]);
+            self.qtable[(self.ctr + 15) & 1023] = self.qtable[(self.ctr + 15) & 1023] +% self.qtable[((self.ctr + 15) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + 15) -% 3) & 1023], self.qtable[((self.ctr + 15) -% 1023) & 1023]);
+            return [16]u32{
+                self.h1(self.qtable[((self.ctr + 0) -% 12) & 1023]) ^ self.qtable[(self.ctr + 0) & 1023],
+                self.h1(self.qtable[((self.ctr + 1) -% 12) & 1023]) ^ self.qtable[(self.ctr + 1) & 1023],
+                self.h1(self.qtable[((self.ctr + 2) -% 12) & 1023]) ^ self.qtable[(self.ctr + 2) & 1023],
+                self.h1(self.qtable[((self.ctr + 3) -% 12) & 1023]) ^ self.qtable[(self.ctr + 3) & 1023],
+                self.h1(self.qtable[((self.ctr + 4) -% 12) & 1023]) ^ self.qtable[(self.ctr + 4) & 1023],
+                self.h1(self.qtable[((self.ctr + 5) -% 12) & 1023]) ^ self.qtable[(self.ctr + 5) & 1023],
+                self.h1(self.qtable[((self.ctr + 6) -% 12) & 1023]) ^ self.qtable[(self.ctr + 6) & 1023],
+                self.h1(self.qtable[((self.ctr + 7) -% 12) & 1023]) ^ self.qtable[(self.ctr + 7) & 1023],
+                self.h1(self.qtable[((self.ctr + 8) -% 12) & 1023]) ^ self.qtable[(self.ctr + 8) & 1023],
+                self.h1(self.qtable[((self.ctr + 9) -% 12) & 1023]) ^ self.qtable[(self.ctr + 9) & 1023],
+                self.h1(self.qtable[((self.ctr + 10) -% 12) & 1023]) ^ self.qtable[(self.ctr + 10) & 1023],
+                self.h1(self.qtable[((self.ctr + 11) -% 12) & 1023]) ^ self.qtable[(self.ctr + 11) & 1023],
+                self.h1(self.qtable[((self.ctr + 12) -% 12) & 1023]) ^ self.qtable[(self.ctr + 12) & 1023],
+                self.h1(self.qtable[((self.ctr + 13) -% 12) & 1023]) ^ self.qtable[(self.ctr + 13) & 1023],
+                self.h1(self.qtable[((self.ctr + 14) -% 12) & 1023]) ^ self.qtable[(self.ctr + 14) & 1023],
+                self.h1(self.qtable[((self.ctr + 15) -% 12) & 1023]) ^ self.qtable[(self.ctr + 15) & 1023],
+            };
         }
     }
 

@@ -9,6 +9,12 @@ pub fn build(b: *std.build.Builder) void {
     lib.setBuildMode(mode);
     lib.install();
 
+    const perf = b.addExecutable("perf", "tests/perf.zig");
+    perf.addPackagePath("hc256", "hc256.zig");
+    perf.setTarget(b.standardTargetOptions(.{}));
+    perf.setBuildMode(mode);
+    perf.install();
+
     const test_vectors = b.addTest("tests/test-vectors.zig");
     test_vectors.setBuildMode(mode);
     test_vectors.addPackagePath("hc256", "hc256.zig");
