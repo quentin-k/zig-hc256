@@ -22,15 +22,13 @@ pub const Hc256 = struct {
     ptable: Table,
     qtable: Table,
     buffer: [BufferSize]u8 = [_]u8{0} ** BufferSize,
-    buffered: bool,
     ctr: usize = 0,
 
     /// Initialize the cipher with the key and iv
-    pub fn init(key: [32]u8, iv: [32]u8, buffered: bool) Hc256 {
+    pub fn init(key: [32]u8, iv: [32]u8,) Hc256 {
         var cipher = Hc256{
             .ptable = undefined,
             .qtable = undefined,
-            .buffered = buffered,
         };
         var w: [2560]u32 = undefined;
 
@@ -43,17 +41,13 @@ pub const Hc256 = struct {
         i = 16;
         while (i < 2560) : (i += 1) w[i] = f2(w[i - 2]) +% w[i - 7] +% f1(w[i - 15]) +% w[i - 16] +% i;
 
-        i = 0;
-        while (i < 1024) : (i += 1) {
-            cipher.ptable[i] = w[i + 512];
-            cipher.qtable[i] = w[i + 1536];
-        }
+        std.mem.copy(u32, &cipher.ptable, w[512..(512 + 1024)]);
+        std.mem.copy(u32, &cipher.qtable, w[1536..(1536 + 1024)]);
 
         i = 0;
-
         while (i < 4096) : (i += 1) _ = cipher.genWord();
 
-        if (buffered) cipher.buffer = [4]u8{ 0, 0, 0, 0 };
+        cipher.buffer = [4]u8{ 0, 0, 0, 0 };
 
         return cipher;
     }

@@ -43,7 +43,7 @@ test "Vector 1" {
         0x4e, 0x74, 0x24, 0x8b, 0x72, 0x0b, 0x48, 0x18,
     };
 
-    var cipher = Hc256.init(key, iv, true);
+    var cipher = Hc256.init(key, iv);
 
     cipher.applyStream(data[0..]);
 
@@ -78,7 +78,7 @@ test "Vector 2" {
         0xdd, 0x50, 0x1f, 0xc6, 0x0b, 0x08, 0x2a, 0x50,
     };
 
-    var cipher = Hc256.init(key, iv, true);
+    var cipher = Hc256.init(key, iv);
 
     cipher.applyStream(data[0..13]);
     cipher.applyStream(data[13..]);
@@ -114,7 +114,7 @@ test "Vector 3" {
         0xae, 0xb3, 0x90, 0x2f, 0x42, 0x0e, 0xd3, 0xa8,
     };
 
-    var cipher = Hc256.init(key, iv, false);
+    var cipher = Hc256.init(key, iv);
 
     cipher.applyStream(data[0..]);
 
