@@ -16,7 +16,8 @@ const std = @import("std");
 
 const Table = [1024]u32;
 
-const buffer_size = 16 * 4;
+const words = 16;
+const buffer_size = words * 4;
 
 pub const Hc256 = struct {
     ptable: Table,
@@ -46,54 +47,61 @@ pub const Hc256 = struct {
         std.mem.copy(u32, &cipher.qtable, w[1536..(1536 + 1024)]);
 
         i = 0;
-        while (i < 4096) : (i += 16) _ = @call(
-            .{ .modifier = .always_inline },
-            genWord16,
-            .{&cipher},
-        );
+        while (i < 4096) : (i += words) cipher.genWords();
 
         return cipher;
     }
 
     /// Applies the keystream from the cipher to the given bytes in place
     pub fn applyStream(self: *Hc256, data: []u8) void {
+        // Set the initial counter
         var i: usize = 0;
+
+        // Use the leftover data in the buffer if it hasn't been used
         if (self.ptr != 0) {
             const remaining = buffer_size - self.ptr;
             const stop = @minimum(remaining, data.len);
             while (i < stop) : (i += 1) {
-                data[i] ^= self.buffer[self.ptr];
-                self.ptr += 1;
+                data[i] ^= self.buffer[self.ptr + i];
             }
+            self.ptr = (self.ptr + i) & (buffer_size - 1);
             if (i == data.len) return;
         }
+
+        // Encrypt the full blocks of data
         while (i + buffer_size <= data.len) : (i += buffer_size) {
-            self.genWord16();
+            self.genWords();
             comptime var j: usize = 0;
             inline while (j < buffer_size) : (j += 1) data[i + j] ^= self.buffer[j];
         }
+
+        // Encrypt the leftover data
         if (i != data.len) {
-            self.genWord16();
+            self.genWords();
             while (i < data.len) : (i += 1) {
-                data[i] ^= self.buffer[self.ptr + i];
+                defer self.ptr += 1;
+                data[i] ^= self.buffer[self.ptr];
             }
-            self.ptr += data.len & (buffer_size - 1);
         }
     }
 
     /// Generates the next word from the cipher
-    inline fn genWord16(self: *Hc256) void {
-        defer self.ctr = (self.ctr + 16) & 2047;
+    inline fn genWords(self: *Hc256) void {
+        // Update the counter
+        defer self.ctr = (self.ctr + words) & 2047;
+
+        // cast the buffer as an array of u32
         var output = @ptrCast([*]align(1) u32, &self.buffer);
+
         if (self.ctr < 1024) {
             comptime var i: usize = 0;
-            inline while (i < 16) : (i += 1) {
+            inline while (i < words) : (i += 1) {
                 self.ptable[(self.ctr + i) & 1023] +%= self.ptable[((self.ctr + i) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + i) -% 3) & 1023], self.ptable[((self.ctr + i) -% 1023) & 1023]);
                 output[i] = self.h1(self.ptable[((self.ctr + i) -% 12) & 1023]) ^ self.ptable[(self.ctr + i) & 1023];
             }
         } else {
             comptime var i: usize = 0;
-            inline while (i < 16) : (i += 1) {
+            inline while (i < words) : (i += 1) {
                 self.qtable[(self.ctr + i) & 1023] +%= self.qtable[((self.ctr + i) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + i) -% 3) & 1023], self.qtable[((self.ctr + i) -% 1023) & 1023]);
                 output[i] = self.h2(self.qtable[((self.ctr + i) -% 12) & 1023]) ^ self.qtable[(self.ctr + i) & 1023];
             }
