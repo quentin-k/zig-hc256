@@ -30,12 +30,7 @@ test "Vector 1" {
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
     };
-    var data = [32]u8{
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-    };
+    var data = [_]u8{0} ** 197;
     const expected = [32]u8{
         0x5b, 0x07, 0x89, 0x85, 0xd8, 0xf6, 0xf3, 0x0d,
         0x42, 0xc5, 0xc0, 0x2f, 0xa6, 0xb6, 0x79, 0x51,
@@ -47,7 +42,7 @@ test "Vector 1" {
 
     cipher.applyStream(&data);
 
-    try std.testing.expectEqualSlices(u8, &expected, &data);
+    try std.testing.expectEqualSlices(u8, &expected, data[0..32]);
 }
 
 test "Vector 2" {

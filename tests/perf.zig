@@ -51,7 +51,7 @@ pub fn main() !void {
     elapsed = timer.read();
 
     try stdout.print(
-        \\It took {d:>.4}s to encrypted {}bytes of data
+        \\It took {d:>.4}s to encrypted {} bytes of data
         \\bytes per cycle: {d:>.4}
         \\message[0..64]: {}
         \\
