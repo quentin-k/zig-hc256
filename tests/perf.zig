@@ -1,54 +1,67 @@
 const std = @import("std");
 const hc256 = @import("hc256");
-const c_clockcycle = @intToFloat(f64, std.time.ns_per_us);
+const cycles_per_nanosecond = 3.2; // This is for a 3.2 GHz machine
+const iterations = 0x4000000;
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var ts_begin: i128 = undefined;
-    var ts_end: i128 = undefined;
+    var key: [32]u8 = [_]u8{0} ** 32;
+    var iv: [32]u8 = [_]u8{0} ** 32;
 
-    var key: [32]u8 = undefined;
-    var iv: [32]u8 = undefined;
+    var msg: [64]u8 = [_]u8{0} ** 64;
 
-    var page_32mb = try allocator.alloc(u8, 32 * 1024 * 1024);
-    defer allocator.free(page_32mb);
+    var timer = try std.time.Timer.start();
+    var cipher = hc256.Hc256.init(key, iv);
+    const init_time = timer.read();
 
-    try std.os.getrandom(&key);
-    try std.os.getrandom(&iv);
-
-    ts_begin = std.time.nanoTimestamp();
-    var c32k = hc256.Hc256.init(key, iv);
-    ts_end = std.time.nanoTimestamp();
-
-    const init_time = ts_end - ts_begin;
     try stdout.print(
         \\Initialization time:
         \\{}ns
         \\{d} clock cycles
         \\
-    , .{ init_time, clockCycles(init_time, 1) });
+    , .{ init_time, @intToFloat(f64, init_time) / cycles_per_nanosecond });
 
-    ts_begin = std.time.nanoTimestamp();
-    c32k.applyStream(page_32mb);
-    ts_end = std.time.nanoTimestamp();
+    timer.reset();
+    var i: u32 = 0;
+    while (i < iterations) : (i += 1) {
+        cipher.applyStream(&msg);
+        cipher.applyStream(&msg);
+    }
+    var elapsed = timer.read();
 
-    const cycles_per_byte = clockCycles(ts_end - ts_begin, page_32mb.len);
+    const bytes_per_cycle = cyclesPerByte(elapsed, 64 * 2 * iterations);
     try stdout.print(
-        \\It took {}ns to apply the stream on a 32 megabyte page
-        \\Cycles per byte: {d:>.3}
-        \\Cycles per bit: {d:>.3}
+        \\It took {d:>.4}s for repeated encryption
+        \\bytes per cycle: {d:>.4}
+        \\message: {}
         \\
-    , .{ ts_end - ts_begin, cycles_per_byte, cycles_per_byte * 8.0 });
+    , .{ @intToFloat(f64, elapsed) / @intToFloat(f64, std.time.ns_per_s), bytes_per_cycle, std.fmt.fmtSliceHexLower(&msg) });
+
+    const stream_size = iterations * 2 * 64;
+    var stream: []u8 = try allocator.alloc(u8, stream_size);
+    defer allocator.free(stream);
+
+    timer.reset();
+    cipher.applyStream(stream);
+    elapsed = timer.read();
+
+    try stdout.print(
+        \\It took {d:>.4}s to encrypted {}bytes of data
+        \\bytes per cycle: {d:>.4}
+        \\message[0..64]: {}
+        \\
+    , .{ @intToFloat(f64, elapsed) / @intToFloat(f64, std.time.ns_per_s),stream_size, bytes_per_cycle, std.fmt.fmtSliceHexLower(stream[0..64]) });
+
 }
 
-fn clockCycles(nanoseconds: i128, bytes: usize) f64 {
+fn cyclesPerByte(nanoseconds: i128, bytes: usize) f64 {
     const ns_f64 = @intToFloat(f64, nanoseconds);
-    const clocks = ns_f64 / c_clockcycle;
+    const clocks = ns_f64 * cycles_per_nanosecond;
     const b_f64 = @intToFloat(f64, bytes);
-    const clocks_per_byte = clocks / b_f64;
-    return clocks_per_byte;
+    return b_f64 / clocks;
 }
