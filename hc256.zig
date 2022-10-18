@@ -56,30 +56,36 @@ pub const Hc256 = struct {
     pub fn applyStream(self: *Hc256, data: []u8) void {
         // Set the initial counter
         var i: usize = 0;
-        var data_words = @ptrCast([*]align(1) u32, data);
-        var wi: usize = 0;
+        //var data_words = @ptrCast([*]align(1) u32, data);
+        //var wi: usize = 0;
 
         // Use the leftover data in the buffer if it hasn't been used
         if (self.ptr != 0) {
             defer self.ptr &= buffer_size - 1;
             const remaining = buffer_size - self.ptr;
-            const buffer = @ptrCast([*]align(1) u32, self.buffer[self.ptr..]);
+            //const buffer = @ptrCast([*]align(1) u32, self.buffer[self.ptr..]);
             const stop = @minimum(remaining, data.len);
             const end = stop == data.len;
-            while (i + 4 < stop) : ({
-                i += 4;
-                self.ptr += 4;
-                wi += 1;
-            }) data_words[wi] ^= buffer[wi & (words - 1)];
-            if (i != data.len) {
-                while (i < data.len) : ({
-                    i += 1;
-                    self.ptr += 1;
-                }) data[i] ^= self.buffer[self.ptr];
-                if (end) return;
-                data_words = @ptrCast([*]align(1) u32, data[i..]);
+            //while (i + 4 < stop) : ({
+            //    i += 4;
+            //    self.ptr += 4;
+            //    wi += 1;
+            //}) data_words[wi] ^= buffer[wi & (words - 1)];
+            //if (i != data.len) {
+            //    while (i < data.len) : ({
+            //        i += 1;
+            //        self.ptr += 1;
+            //    }) data[i] ^= self.buffer[self.ptr];
+            //    if (end) return;
+            //    data_words = @ptrCast([*]align(1) u32, data[i..]);
+            //}
+            while (i < stop) : (i += 1) data[i] ^= self.buffer[self.ptr + i];
+            if (end) {
+                self.ptr += i;
+                return;
+            } else {
+                self.ptr = 0;
             }
-            if (end) return;
         }
 
         // Encrypt the full blocks of data
@@ -100,7 +106,7 @@ pub const Hc256 = struct {
     }
 
     /// Generates the next word from the cipher
-    inline fn genWords(self: *Hc256) void {
+    pub inline fn genWords(self: *Hc256) void {
         // Update the counter
         defer self.ctr = (self.ctr + words) & 2047;
 

@@ -9,11 +9,20 @@ pub fn build(b: *std.build.Builder) void {
     lib.setBuildMode(mode);
     lib.install();
 
+    const target = b.standardTargetOptions(.{});
+
     const perf = b.addExecutable("perf", "tests/perf.zig");
     perf.addPackagePath("hc256", "hc256.zig");
-    perf.setTarget(b.standardTargetOptions(.{}));
+    perf.setTarget(target);
     perf.setBuildMode(mode);
     perf.install();
+
+    const gw_speed = b.addExecutable("gw_speed", "tests/gw_speed.zig");
+    gw_speed.addPackagePath("hc256", "hc256.zig");
+    gw_speed.setTarget(target);
+    gw_speed.setBuildMode(mode);
+    gw_speed.install();
+
 
     const test_vectors = b.addTest("tests/test-vectors.zig");
     test_vectors.setBuildMode(mode);
