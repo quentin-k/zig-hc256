@@ -98,14 +98,13 @@ pub const Hc256 = struct {
 
         // cast the buffer as an array of u32
         var output = @ptrCast([*]u32, &self.buffer);
-
         if (self.ctr < 1024) {
             comptime var i: usize = 0;
             inline while (i < words) : (i += 1) {
                 const w0 = (self.ctr + i) & 1023;
                 const w10 = (self.ctr + i -% 10) & 1023;
                 const w3 = (self.ctr + i -% 3) & 1023;
-                const w1023 = (self.ctr + i -% 3) & 1023;
+                const w1023 = (self.ctr + i + 1) & 1023;
                 const w12 = (self.ctr + i -% 12) & 1023;
                 self.ptable[w0] +%= self.ptable[w10] +% self.g1(self.ptable[w3], self.ptable[w1023]);
                 output[i] = self.h1(self.ptable[w12]) ^ self.ptable[w0];
@@ -116,7 +115,7 @@ pub const Hc256 = struct {
                 const w0 = (self.ctr + i) & 1023;
                 const w10 = (self.ctr + i -% 10) & 1023;
                 const w3 = (self.ctr + i -% 3) & 1023;
-                const w1023 = (self.ctr + i -% 3) & 1023;
+                const w1023 = (self.ctr + i + 1) & 1023;
                 const w12 = (self.ctr + i -% 12) & 1023;
                 self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
                 output[i] = self.h2(self.qtable[w12]) ^ self.qtable[w0];
