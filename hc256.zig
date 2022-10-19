@@ -17,12 +17,13 @@ const std = @import("std");
 const Table = [1024]u32;
 
 const words = 16;
-const buffer_size = words * 4;
+pub const buffer_size = words * 4;
+const native_words = buffer_size / @sizeOf(usize);
 
 pub const Hc256 = struct {
-    ptable: Table,
-    qtable: Table,
-    buffer: [buffer_size]u8 align(4) = [_]u8{0} ** buffer_size,
+    ptable: Table align(@sizeOf(usize)),
+    qtable: Table align(@sizeOf(usize)),
+    buffer: [buffer_size]u8 align(@sizeOf(usize)) = [_]u8{0} ** buffer_size,
     ctr: usize = 0,
     ptr: usize = 0,
 
@@ -74,12 +75,7 @@ pub const Hc256 = struct {
             }
         }
 
-        // Encrypt the full blocks of data
-        while (i + buffer_size <= data.len) : (i += buffer_size) {
-            self.genWords();
-            comptime var j: usize = 0;
-            inline while (j < buffer_size) : (j += 1) data[i + j] ^= self.buffer[j];
-        }
+        i += @call(.{ .modifier = .always_inline }, applyStreamFast, .{ self, data[i..] });
 
         // Encrypt the leftover data
         if (i != data.len) {
@@ -89,6 +85,21 @@ pub const Hc256 = struct {
                 data[i] ^= self.buffer[self.ptr];
             }
         }
+    }
+
+    /// Applies the keystream to full blocks of data, returns the bytes encrypted. ***WARNING*** This function does not work with partial buffers.
+    pub fn applyStreamFast(self: *Hc256, data: []u8) usize {
+        var i: usize = 0;
+        const len = data.len / buffer_size;
+        var data_words = @ptrCast([*]align(1) usize, data);
+        var buffer = @ptrCast([*]usize, &self.buffer);
+
+        while (i < len) : (i += 1) {
+            self.genWords();
+            comptime var j = 0;
+            inline while (j < native_words) : (j += 1) data_words[(i * native_words) + j] ^= buffer[j];
+        }
+        return i * buffer_size;
     }
 
     /// Generates the next word from the cipher
@@ -164,7 +175,7 @@ pub const Hc256 = struct {
             self.stepQ(a13, a3, a10, a14, a1, &output[13]);
             self.stepQ(a14, a4, a11, a15, a2, &output[14]);
             self.stepQ(a15, a5, a12, c, a3, &output[15]);
-}
+        }
     }
 
     pub fn random(self: *Hc256) std.rand.Random {

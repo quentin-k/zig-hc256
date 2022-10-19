@@ -29,8 +29,8 @@ pub fn main() !void {
     timer.reset();
     var i: u32 = 0;
     while (i < iterations) : (i += 1) {
-        cipher.applyStream(&msg);
-        cipher.applyStream(&msg);
+        _ = cipher.applyStreamFast(&msg);
+        _ = cipher.applyStreamFast(&msg);
     }
     var elapsed = timer.read();
 
@@ -47,7 +47,7 @@ pub fn main() !void {
     defer allocator.free(stream);
 
     timer.reset();
-    cipher.applyStream(stream);
+    _ = cipher.applyStreamFast(stream);
     elapsed = timer.read();
 
     try stdout.print(
