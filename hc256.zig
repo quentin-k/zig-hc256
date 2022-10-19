@@ -63,22 +63,8 @@ pub const Hc256 = struct {
         if (self.ptr != 0) {
             defer self.ptr &= buffer_size - 1;
             const remaining = buffer_size - self.ptr;
-            //const buffer = @ptrCast([*]align(1) u32, self.buffer[self.ptr..]);
             const stop = @minimum(remaining, data.len);
             const end = stop == data.len;
-            //while (i + 4 < stop) : ({
-            //    i += 4;
-            //    self.ptr += 4;
-            //    wi += 1;
-            //}) data_words[wi] ^= buffer[wi & (words - 1)];
-            //if (i != data.len) {
-            //    while (i < data.len) : ({
-            //        i += 1;
-            //        self.ptr += 1;
-            //    }) data[i] ^= self.buffer[self.ptr];
-            //    if (end) return;
-            //    data_words = @ptrCast([*]align(1) u32, data[i..]);
-            //}
             while (i < stop) : (i += 1) data[i] ^= self.buffer[self.ptr + i];
             if (end) {
                 self.ptr += i;
@@ -116,14 +102,24 @@ pub const Hc256 = struct {
         if (self.ctr < 1024) {
             comptime var i: usize = 0;
             inline while (i < words) : (i += 1) {
-                self.ptable[(self.ctr + i) & 1023] +%= self.ptable[((self.ctr + i) -% 10) & 1023] +% self.g1(self.ptable[((self.ctr + i) -% 3) & 1023], self.ptable[((self.ctr + i) -% 1023) & 1023]);
-                output[i] = self.h1(self.ptable[((self.ctr + i) -% 12) & 1023]) ^ self.ptable[(self.ctr + i) & 1023];
+                const w0 = (self.ctr + i) & 1023;
+                const w10 = (self.ctr + i -% 10) & 1023;
+                const w3 = (self.ctr + i -% 3) & 1023;
+                const w1023 = (self.ctr + i -% 3) & 1023;
+                const w12 = (self.ctr + i -% 12) & 1023;
+                self.ptable[w0] +%= self.ptable[w10] +% self.g1(self.ptable[w3], self.ptable[w1023]);
+                output[i] = self.h1(self.ptable[w12]) ^ self.ptable[w0];
             }
         } else {
             comptime var i: usize = 0;
             inline while (i < words) : (i += 1) {
-                self.qtable[(self.ctr + i) & 1023] +%= self.qtable[((self.ctr + i) -% 10) & 1023] +% self.g2(self.qtable[((self.ctr + i) -% 3) & 1023], self.qtable[((self.ctr + i) -% 1023) & 1023]);
-                output[i] = self.h2(self.qtable[((self.ctr + i) -% 12) & 1023]) ^ self.qtable[(self.ctr + i) & 1023];
+                const w0 = (self.ctr + i) & 1023;
+                const w10 = (self.ctr + i -% 10) & 1023;
+                const w3 = (self.ctr + i -% 3) & 1023;
+                const w1023 = (self.ctr + i -% 3) & 1023;
+                const w12 = (self.ctr + i -% 12) & 1023;
+                self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
+                output[i] = self.h2(self.qtable[w12]) ^ self.qtable[w0];
             }
         }
     }
