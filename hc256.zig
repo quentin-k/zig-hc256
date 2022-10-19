@@ -95,34 +95,76 @@ pub const Hc256 = struct {
     pub inline fn genWords(self: *Hc256) void {
         // Update the counter
         defer self.ctr = (self.ctr + words) & 2047;
-        const ctr = self.ctr & 1023;
+        const a = self.ctr & 1023;
+        const b = (self.ctr -% 16) & 1023;
+        const c = (self.ctr + 16) & 1023;
+
+        const a1 = a + 1;
+        const a2 = a + 2;
+        const a3 = a + 3;
+        const a4 = a + 4;
+        const a5 = a + 5;
+        const a6 = a + 6;
+        const a7 = a + 7;
+        const a8 = a + 8;
+        const a9 = a + 9;
+        const a10 = a + 10;
+        const a11 = a + 11;
+        const a12 = a + 12;
+        const a13 = a + 13;
+        const a14 = a + 14;
+        const a15 = a + 15;
+        const b4 = b + 4;
+        const b5 = b + 5;
+        const b6 = b + 6;
+        const b7 = b + 7;
+        const b8 = b + 8;
+        const b9 = b + 9;
+        const b10 = b + 10;
+        const b11 = b + 11;
+        const b12 = b + 12;
+        const b13 = b + 13;
+        const b14 = b + 14;
+        const b15 = b + 15;
 
         // cast the buffer as an array of u32
         var output = @ptrCast([*]u32, &self.buffer);
 
         if (self.ctr < 1024) {
-            comptime var i: usize = 0;
-            inline while (i < words) : (i += 1) {
-                const w0 = ctr + i;
-                const w10 = (self.ctr + i -% 10) & 1023;
-                const w3 = (self.ctr + i -% 3) & 1023;
-                const w1023 = (self.ctr + i + 1) & 1023;
-                const w12 = (self.ctr + i -% 12) & 1023;
-                self.ptable[w0] +%= self.ptable[w10] +% self.g1(self.ptable[w3], self.ptable[w1023]);
-                output[i] = self.h1(self.ptable[w12]) ^ self.ptable[w0];
-            }
+            self.stepP(a, b6, b13, a1, b4, &output[0]);
+            self.stepP(a1, b7, b14, a2, b5, &output[1]);
+            self.stepP(a2, b8, b15, a3, b6, &output[2]);
+            self.stepP(a3, b9, a, a4, b7, &output[3]);
+            self.stepP(a4, b10, a1, a5, b8, &output[4]);
+            self.stepP(a5, b11, a2, a6, b9, &output[5]);
+            self.stepP(a6, b12, a3, a7, b10, &output[6]);
+            self.stepP(a7, b13, a4, a8, b11, &output[7]);
+            self.stepP(a8, b14, a5, a9, b12, &output[8]);
+            self.stepP(a9, b15, a6, a10, b13, &output[9]);
+            self.stepP(a10, a, a7, a11, b14, &output[10]);
+            self.stepP(a11, a1, a8, a12, b15, &output[11]);
+            self.stepP(a12, a2, a9, a13, a, &output[12]);
+            self.stepP(a13, a3, a10, a14, a1, &output[13]);
+            self.stepP(a14, a4, a11, a15, a2, &output[14]);
+            self.stepP(a15, a5, a12, c, a3, &output[15]);
         } else {
-            comptime var i: usize = 0;
-            inline while (i < words) : (i += 1) {
-                const w0 = ctr + i;
-                const w10 = (self.ctr + i -% 10) & 1023;
-                const w3 = (self.ctr + i -% 3) & 1023;
-                const w1023 = (self.ctr + i + 1) & 1023;
-                const w12 = (self.ctr + i -% 12) & 1023;
-                self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
-                output[i] = self.h2(self.qtable[w12]) ^ self.qtable[w0];
-            }
-        }
+            self.stepQ(a, b6, b13, a1, b4, &output[0]);
+            self.stepQ(a1, b7, b14, a2, b5, &output[1]);
+            self.stepQ(a2, b8, b15, a3, b6, &output[2]);
+            self.stepQ(a3, b9, a, a4, b7, &output[3]);
+            self.stepQ(a4, b10, a1, a5, b8, &output[4]);
+            self.stepQ(a5, b11, a2, a6, b9, &output[5]);
+            self.stepQ(a6, b12, a3, a7, b10, &output[6]);
+            self.stepQ(a7, b13, a4, a8, b11, &output[7]);
+            self.stepQ(a8, b14, a5, a9, b12, &output[8]);
+            self.stepQ(a9, b15, a6, a10, b13, &output[9]);
+            self.stepQ(a10, a, a7, a11, b14, &output[10]);
+            self.stepQ(a11, a1, a8, a12, b15, &output[11]);
+            self.stepQ(a12, a2, a9, a13, a, &output[12]);
+            self.stepQ(a13, a3, a10, a14, a1, &output[13]);
+            self.stepQ(a14, a4, a11, a15, a2, &output[14]);
+            self.stepQ(a15, a5, a12, c, a3, &output[15]);
+}
     }
 
     pub fn random(self: *Hc256) std.rand.Random {
@@ -136,6 +178,16 @@ pub const Hc256 = struct {
             applyStream,
             .{&self},
         );
+    }
+
+    inline fn stepP(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize, w12: usize, output: *u32) void {
+        self.ptable[w0] +%= self.ptable[w10] +% self.g1(self.ptable[w3], self.ptable[w1023]);
+        output.* = self.h1(self.ptable[w12]) ^ self.ptable[w0];
+    }
+
+    inline fn stepQ(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize, w12: usize, output: *u32) void {
+        self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
+        output.* = self.h2(self.qtable[w12]) ^ self.qtable[w0];
     }
 
     inline fn h1(self: *Hc256, x: u32) u32 {
