@@ -20,7 +20,7 @@ int main() {
 
     uint8* keystream = (uint8 *)state.keystream;
     for (int i = 0; i < 64; ++i)
-        printf("%x", keystream[i]);
+        printf("%02x", keystream[i]);
     printf("\n");
     return 0;
 }

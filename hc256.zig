@@ -111,7 +111,7 @@ pub const Hc256 = struct {
         defer self.ctr = (self.ctr + words) & 2047;
 
         // cast the buffer as an array of u32
-        var output = @ptrCast([*]align(1) u32, &self.buffer);
+        var output = @ptrCast([*]u32, &self.buffer);
 
         if (self.ctr < 1024) {
             comptime var i: usize = 0;
