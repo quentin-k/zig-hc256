@@ -95,13 +95,15 @@ pub const Hc256 = struct {
     pub inline fn genWords(self: *Hc256) void {
         // Update the counter
         defer self.ctr = (self.ctr + words) & 2047;
+        const ctr = self.ctr & 1023;
 
         // cast the buffer as an array of u32
         var output = @ptrCast([*]u32, &self.buffer);
+
         if (self.ctr < 1024) {
             comptime var i: usize = 0;
             inline while (i < words) : (i += 1) {
-                const w0 = (self.ctr + i) & 1023;
+                const w0 = ctr + i;
                 const w10 = (self.ctr + i -% 10) & 1023;
                 const w3 = (self.ctr + i -% 3) & 1023;
                 const w1023 = (self.ctr + i + 1) & 1023;
@@ -112,7 +114,7 @@ pub const Hc256 = struct {
         } else {
             comptime var i: usize = 0;
             inline while (i < words) : (i += 1) {
-                const w0 = (self.ctr + i) & 1023;
+                const w0 = ctr + i;
                 const w10 = (self.ctr + i -% 10) & 1023;
                 const w3 = (self.ctr + i -% 3) & 1023;
                 const w1023 = (self.ctr + i + 1) & 1023;
