@@ -54,7 +54,7 @@ int main()
 
       /*compute the speed*/
       duration = ((double)(finish - start))/ CLOCKS_PER_SEC;
-      speed = duration*3.20*1000*1000*1000/(((double)i)*2*msglength); /* 2.53*1000*1000*1000 indicates a 2.53GHz CPU */
+      speed = duration*3.20*1000*1000*1000/(((double)i)*2*msglength); /* 3.20*1000*1000*1000 indicates a 3.20GHz CPU */
 
       /*print out the speed*/
       printf("\n\nThe encryption takes %4.4f seconds.\nThe encryption speed is %3.4f cycles/byte \n",duration,speed);
