@@ -29,6 +29,7 @@ pub const Hc256 = struct {
 
     /// Initialize the cipher with the key and iv
     pub fn init(key: [32]u8, iv: [32]u8) Hc256 {
+        @setRuntimeSafety(false);
         var cipher = Hc256{
             .ptable = undefined,
             .qtable = undefined,
@@ -55,6 +56,7 @@ pub const Hc256 = struct {
 
     /// Applies the keystream from the cipher to the given bytes in place
     pub fn applyStream(self: *Hc256, data: []u8) void {
+        @setRuntimeSafety(false);
         var i: usize = 0;
         var data_words = @ptrCast([*]align(1) usize, data);
 
@@ -129,6 +131,7 @@ pub const Hc256 = struct {
 
     /// Applies the keystream to full blocks of data, returns the bytes encrypted. ***WARNING*** This function does not work with partial buffers.
     pub fn applyStreamFast(self: *Hc256, data: []u8) usize {
+        @setRuntimeSafety(false);
         var i: usize = 0;
         const len = data.len / buffer_size;
         var data_words = @ptrCast([*]align(1) usize, data);
@@ -144,6 +147,7 @@ pub const Hc256 = struct {
 
     /// Generates the next word from the cipher
     pub inline fn genWords(self: *Hc256) void {
+        @setRuntimeSafety(false);
         // Update the counter
         defer self.ctr = (self.ctr + words) & 2047;
         const a = self.ctr & 1023;
@@ -219,6 +223,7 @@ pub const Hc256 = struct {
     }
 
     inline fn update(self: *Hc256) void {
+        @setRuntimeSafety(false);
         // Update the counter
         defer self.ctr = (self.ctr + words) & 2047;
         const a = self.ctr & 1023;
@@ -293,6 +298,7 @@ pub const Hc256 = struct {
     }
 
     fn getRandom(self: *Hc256, data: []u8) void {
+        @setRuntimeSafety(false);
         std.mem.set(u8, data, 0);
         @call(
             .{ .modifier = .always_inline },
@@ -302,48 +308,59 @@ pub const Hc256 = struct {
     }
 
     inline fn stepP(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize, w12: usize, output: *u32) void {
+        @setRuntimeSafety(false);
         self.ptable[w0] +%= self.ptable[w10] +% self.g1(self.ptable[w3], self.ptable[w1023]);
         output.* = self.h1(self.ptable[w12]) ^ self.ptable[w0];
     }
 
     inline fn stepQ(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize, w12: usize, output: *u32) void {
+        @setRuntimeSafety(false);
         self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
         output.* = self.h2(self.qtable[w12]) ^ self.qtable[w0];
     }
 
     inline fn updateP(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize) void {
+        @setRuntimeSafety(false);
         self.ptable[w0] +%= self.ptable[w10] +% self.g1(self.ptable[w3], self.ptable[w1023]);
     }
 
     inline fn updateQ(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize) void {
+        @setRuntimeSafety(false);
         self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
     }
 
     inline fn h1(self: *Hc256, x: u32) u32 {
+        @setRuntimeSafety(false);
         return self.qtable[x & 255] +% self.qtable[256 + ((x >> 8) & 255)] +% self.qtable[512 + ((x >> 16) & 255)] +% self.qtable[768 + ((x >> 24) & 255)];
     }
 
     inline fn h2(self: *Hc256, x: u32) u32 {
+        @setRuntimeSafety(false);
         return self.ptable[x & 255] +% self.ptable[256 + ((x >> 8) & 255)] +% self.ptable[512 + ((x >> 16) & 255)] +% self.ptable[768 + ((x >> 24) & 255)];
     }
 
     inline fn g1(self: *Hc256, x: u32, y: u32) u32 {
+        @setRuntimeSafety(false);
         return (rotr(x, 10) ^ rotr(y, 23)) +% self.qtable[(x ^ y) & 1023];
     }
 
     inline fn g2(self: *Hc256, x: u32, y: u32) u32 {
+        @setRuntimeSafety(false);
         return (rotr(x, 10) ^ rotr(y, 23)) +% self.ptable[(x ^ y) & 1023];
     }
 };
 
 inline fn f1(x: u32) u32 {
+    @setRuntimeSafety(false);
     return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3);
 }
 
 inline fn f2(x: u32) u32 {
+    @setRuntimeSafety(false);
     return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10);
 }
 
 inline fn rotr(a: u32, b: u32) u32 {
+    @setRuntimeSafety(false);
     return (a >> @intCast(u5, b)) | (a << @intCast(u5, 32 - b));
 }
