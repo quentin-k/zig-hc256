@@ -34,13 +34,19 @@ pub fn main() !void {
     }
     var elapsed = timer.read();
 
-    const bytes_per_cycle = cyclesPerByte(elapsed, 64 * 2 * iterations);
+    const cpb_1 = cyclesPerByte(elapsed, 64 * 2 * iterations);
     try stdout.print(
         \\It took {d:>.4}s for repeated encryption
-        \\bytes per cycle: {d:>.4}
+        \\clock cycles: {d:>.3}
+        \\cycles per byte: {d:>.4}
         \\message: {}
         \\
-    , .{ @intToFloat(f64, elapsed) / @intToFloat(f64, std.time.ns_per_s), bytes_per_cycle, std.fmt.fmtSliceHexLower(&msg) });
+    , .{
+        @intToFloat(f64, elapsed) / @intToFloat(f64, std.time.ns_per_s),
+        @intToFloat(f64, elapsed) * cycles_per_nanosecond,
+        cpb_1,
+        std.fmt.fmtSliceHexLower(&msg),
+    });
 
     const stream_size = iterations * 2 * 64;
     var stream: []u8 = try allocator.alloc(u8, stream_size);
@@ -49,19 +55,25 @@ pub fn main() !void {
     timer.reset();
     _ = cipher.applyStreamFast(stream);
     elapsed = timer.read();
+    const cpb_2 = cyclesPerByte(elapsed, stream_size);
 
     try stdout.print(
         \\It took {d:>.4}s to encrypted {} bytes of data
-        \\bytes per cycle: {d:>.4}
+        \\clock cycles: {d:>.3}
+        \\cycles per byte: {d:>.4}
         \\message[0..64]: {}
         \\
-    , .{ @intToFloat(f64, elapsed) / @intToFloat(f64, std.time.ns_per_s),stream_size, bytes_per_cycle, std.fmt.fmtSliceHexLower(stream[0..64]) });
-
+    , .{
+        @intToFloat(f64, elapsed) / @intToFloat(f64, std.time.ns_per_s),
+        stream_size,
+        @intToFloat(f64, elapsed) * cycles_per_nanosecond,
+        cpb_2,
+        std.fmt.fmtSliceHexLower(stream[0..64]),
+    });
 }
 
-fn cyclesPerByte(nanoseconds: i128, bytes: usize) f64 {
-    const ns_f64 = @intToFloat(f64, nanoseconds);
-    const clocks = ns_f64 * cycles_per_nanosecond;
+fn cyclesPerByte(nanoseconds: u64, bytes: usize) f64 {
+    const clockcycles = @intToFloat(f64, nanoseconds) * cycles_per_nanosecond;
     const b_f64 = @intToFloat(f64, bytes);
-    return b_f64 / clocks;
+    return clockcycles / b_f64;
 }

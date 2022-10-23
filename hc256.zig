@@ -35,55 +35,95 @@ pub const Hc256 = struct {
         };
         var w: [2560]u32 = undefined;
 
-        var i: u32 = 0;
-        while (i < 8) : (i += 1) {
-            w[i] = @as(u32, key[i * 4]) | (@as(u32, key[(i * 4) + 1]) << 8) | (@as(u32, key[(i * 4) + 2]) << 16) | (@as(u32, key[(i * 4) + 3]) << 24);
-            w[i + 8] = @as(u32, iv[i * 4]) | (@as(u32, iv[(i * 4) + 1]) << 8) | (@as(u32, iv[(i * 4) + 2]) << 16) | (@as(u32, iv[(i * 4) + 3]) << 24);
+        var i: u32 = 16;
+        comptime var j = 0;
+        inline while (j < 8) : (j += 1) {
+            w[j] = @as(u32, key[j * 4]) | (@as(u32, key[(j * 4) + 1]) << 8) | (@as(u32, key[(j * 4) + 2]) << 16) | (@as(u32, key[(j * 4) + 3]) << 24);
+            w[j + 8] = @as(u32, iv[j * 4]) | (@as(u32, iv[(j * 4) + 1]) << 8) | (@as(u32, iv[(j * 4) + 2]) << 16) | (@as(u32, iv[(j * 4) + 3]) << 24);
         }
 
-        i = 16;
         while (i < 2560) : (i += 1) w[i] = f2(w[i - 2]) +% w[i - 7] +% f1(w[i - 15]) +% w[i - 16] +% i;
 
         std.mem.copy(u32, &cipher.ptable, w[512..(512 + 1024)]);
         std.mem.copy(u32, &cipher.qtable, w[1536..(1536 + 1024)]);
 
         i = 0;
-        while (i < 4096) : (i += words) cipher.genWords();
+        while (i < 4096) : (i += words) cipher.update();
 
         return cipher;
     }
 
     /// Applies the keystream from the cipher to the given bytes in place
     pub fn applyStream(self: *Hc256, data: []u8) void {
-        // Set the initial counter
         var i: usize = 0;
-        //var data_words = @ptrCast([*]align(1) u32, data);
-        //var wi: usize = 0;
+        var data_words = @ptrCast([*]align(1) usize, data);
 
-        // Use the leftover data in the buffer if it hasn't been used
+        // Apply the leftover buffer
         if (self.ptr != 0) {
+            // Mask the pointer
             defer self.ptr &= buffer_size - 1;
-            const remaining = buffer_size - self.ptr;
-            const stop = @minimum(remaining, data.len);
-            const end = stop == data.len;
-            while (i < stop) : (i += 1) data[i] ^= self.buffer[self.ptr + i];
-            if (end) {
-                self.ptr += i;
-                return;
-            } else {
-                self.ptr = 0;
-            }
+
+            // Determine the stop values
+            const stop = @minimum(buffer_size - self.ptr, data.len);
+            const full_words = stop / @sizeOf(usize);
+
+            // Apply the full words leftover
+            const buf_words = @ptrCast([*]align(1) usize, self.buffer[self.ptr..]);
+            var j: usize = 0;
+            while (j < full_words) : (j += 1)
+                data_words[j] ^= buf_words[j];
+
+            // update i & self.ptr
+            const bytes_written = full_words * @sizeOf(usize);
+            i += bytes_written;
+            self.ptr += bytes_written;
+
+            // Apply the remaining bytes
+            while (i < stop) : ({
+                i += 1;
+                self.ptr += 1;
+            }) data[i] ^= self.buffer[self.ptr];
+            if (i == data.len) return else data_words = @ptrCast([*]align(1) usize, data[i..]);
         }
 
-        i += @call(.{ .modifier = .always_inline }, applyStreamFast, .{ self, data[i..] });
+        var wi: usize = 0;
 
-        // Encrypt the leftover data
-        if (i != data.len) {
+        // Apply full buffers to the stream
+        const full_blocks = (data.len - i) / buffer_size;
+        var fi: usize = 0;
+        while (fi < full_blocks) : (fi += 1) {
+            // Update the buffer words
             self.genWords();
-            while (i < data.len) : (i += 1) {
-                defer self.ptr += 1;
-                data[i] ^= self.buffer[self.ptr];
-            }
+            const buffer_words = @ptrCast([*]align(1) usize, &self.buffer);
+
+            // Apply the buffer to the data
+            comptime var j = 0;
+            inline while (j < native_words) : (j += 1)
+                data_words[wi + j] ^= buffer_words[j];
+
+            wi += native_words;
+        }
+
+        i += wi * @sizeOf(usize);
+
+        if (i < data.len) {
+            // Generate the leftover words
+            self.genWords();
+            const buffer_words = @ptrCast([*]align(1) usize, &self.buffer);
+
+            // Apply the stream to the remaining full words
+            const leftover_words = (data.len - i) / @sizeOf(usize);
+            var j: usize = 0;
+            while (j < leftover_words) : (j += 1)
+                data_words[wi + j] ^= buffer_words[j];
+
+            // Update self.ptr and the index then apply the remaining bytes
+            self.ptr += leftover_words * @sizeOf(usize);
+            i += leftover_words * @sizeOf(usize);
+            while (i < data.len) : ({
+                i += 1;
+                self.ptr += 1;
+            }) data[i] ^= self.buffer[self.ptr];
         }
     }
 
@@ -178,6 +218,76 @@ pub const Hc256 = struct {
         }
     }
 
+    inline fn update(self: *Hc256) void {
+        // Update the counter
+        defer self.ctr = (self.ctr + words) & 2047;
+        const a = self.ctr & 1023;
+        const b = (self.ctr -% 16) & 1023;
+        const c = (self.ctr + 16) & 1023;
+
+        const a1 = a + 1;
+        const a2 = a + 2;
+        const a3 = a + 3;
+        const a4 = a + 4;
+        const a5 = a + 5;
+        const a6 = a + 6;
+        const a7 = a + 7;
+        const a8 = a + 8;
+        const a9 = a + 9;
+        const a10 = a + 10;
+        const a11 = a + 11;
+        const a12 = a + 12;
+        const a13 = a + 13;
+        const a14 = a + 14;
+        const a15 = a + 15;
+        const b6 = b + 6;
+        const b7 = b + 7;
+        const b8 = b + 8;
+        const b9 = b + 9;
+        const b10 = b + 10;
+        const b11 = b + 11;
+        const b12 = b + 12;
+        const b13 = b + 13;
+        const b14 = b + 14;
+        const b15 = b + 15;
+
+        if (self.ctr < 1024) {
+            self.updateP(a, b6, b13, a1);
+            self.updateP(a1, b7, b14, a2);
+            self.updateP(a2, b8, b15, a3);
+            self.updateP(a3, b9, a, a4);
+            self.updateP(a4, b10, a1, a5);
+            self.updateP(a5, b11, a2, a6);
+            self.updateP(a6, b12, a3, a7);
+            self.updateP(a7, b13, a4, a8);
+            self.updateP(a8, b14, a5, a9);
+            self.updateP(a9, b15, a6, a10);
+            self.updateP(a10, a, a7, a11);
+            self.updateP(a11, a1, a8, a12);
+            self.updateP(a12, a2, a9, a13);
+            self.updateP(a13, a3, a10, a14);
+            self.updateP(a14, a4, a11, a15);
+            self.updateP(a15, a5, a12, c);
+        } else {
+            self.updateQ(a, b6, b13, a1);
+            self.updateQ(a1, b7, b14, a2);
+            self.updateQ(a2, b8, b15, a3);
+            self.updateQ(a3, b9, a, a4);
+            self.updateQ(a4, b10, a1, a5);
+            self.updateQ(a5, b11, a2, a6);
+            self.updateQ(a6, b12, a3, a7);
+            self.updateQ(a7, b13, a4, a8);
+            self.updateQ(a8, b14, a5, a9);
+            self.updateQ(a9, b15, a6, a10);
+            self.updateQ(a10, a, a7, a11);
+            self.updateQ(a11, a1, a8, a12);
+            self.updateQ(a12, a2, a9, a13);
+            self.updateQ(a13, a3, a10, a14);
+            self.updateQ(a14, a4, a11, a15);
+            self.updateQ(a15, a5, a12, c);
+        }
+    }
+
     pub fn random(self: *Hc256) std.rand.Random {
         return std.rand.Random.init(self, getRandom);
     }
@@ -199,6 +309,14 @@ pub const Hc256 = struct {
     inline fn stepQ(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize, w12: usize, output: *u32) void {
         self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
         output.* = self.h2(self.qtable[w12]) ^ self.qtable[w0];
+    }
+
+    inline fn updateP(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize) void {
+        self.ptable[w0] +%= self.ptable[w10] +% self.g1(self.ptable[w3], self.ptable[w1023]);
+    }
+
+    inline fn updateQ(self: *Hc256, w0: usize, w10: usize, w3: usize, w1023: usize) void {
+        self.qtable[w0] +%= self.qtable[w10] +% self.g2(self.qtable[w3], self.qtable[w1023]);
     }
 
     inline fn h1(self: *Hc256, x: u32) u32 {
